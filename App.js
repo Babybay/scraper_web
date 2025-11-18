@@ -6,163 +6,167 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  ActivityIndicator,
   TouchableOpacity
 } from 'react-native';
 import axios from 'axios';
 
-const API_BASE = 'http://192.168.1.8:5000'; // Ganti dengan IP server Anda
+const API_BASE = 'http://192.168.1.8:5000';
 
 export default function App() {
   const [destination, setDestination] = useState('Jakarta');
   const [hotels, setHotels] = useState([]);
-  const [content, setContent] = useState('');
+  const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
-  const [chatMessage, setChatMessage] = useState('');
-  const [chatResponse, setChatResponse] = useState('');
+  const [currentAction, setCurrentAction] = useState('');
 
-  const handleScrape = async () => {
-    setLoading(true);
+  const apiRequest = async (endpoint, data = {}) => {
     try {
-      const response = await axios.post(`${API_BASE}/scrape`, {
-        destination: destination || 'Jakarta'
+      const response = await axios.post(`${API_BASE}${endpoint}`, data, {
+        timeout: 60000,
+        headers: { 'Content-Type': 'application/json' }
       });
-
-      if (response.data.success) {
-        setHotels(response.data.hotels);
-        Alert.alert('Success', `Found ${response.data.count} hotels in ${response.data.destination}`);
-      }
+      return response.data;
     } catch (error) {
-      Alert.alert('Error', 'Failed to scrape hotels');
-    } finally {
-      setLoading(false);
+      throw error;
     }
   };
 
-  const handleGenerate = async () => {
+  const handleScrapeHotels = async () => {
+    setLoading(true);
+    setCurrentAction('scraping');
+    setHotels([]);
+    setCaption('');
+
     try {
-      const response = await axios.post(`${API_BASE}/generate`);
-      if (response.data.success) {
-        setContent(response.data.content);
+      const result = await apiRequest('/scrape', { destination });
+      if (result.success) {
+        setHotels(result.hotels);
+        Alert.alert('Success', `Found ${result.count} hotels`);
+      } else {
+        Alert.alert('Error', result.error);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to generate content');
+      Alert.alert('Error', 'Request failed');
+    } finally {
+      setLoading(false);
+      setCurrentAction('');
+    }
+  };
+
+  const handleGenerateCaption = async () => {
+    if (hotels.length === 0) {
+      Alert.alert('Info', 'Scrape hotels first');
+      return;
+    }
+
+    setLoading(true);
+    setCurrentAction('generating');
+    setCaption('');
+
+    try {
+      const result = await apiRequest('/generate', { destination });
+      if (result.success) {
+        setCaption(result.content);
+        Alert.alert('Success', 'Caption generated');
+      } else {
+        Alert.alert('Error', result.error);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Generation failed');
+    } finally {
+      setLoading(false);
+      setCurrentAction('');
     }
   };
 
   const handlePublish = async () => {
+    if (hotels.length === 0) {
+      Alert.alert('Info', 'Scrape hotels first');
+      return;
+    }
+
+    setLoading(true);
+    setCurrentAction('publishing');
+
     try {
-      const response = await axios.post(`${API_BASE}/publish`);
-      if (response.data.success) {
-        Alert.alert('Success', 'Content published!');
+      const result = await apiRequest('/publish', { destination });
+      if (result.success) {
+        Alert.alert('Success', 'Published');
+      } else {
+        Alert.alert('Error', result.error);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to publish content');
-    }
-  };
-
-  const handleChat = async () => {
-    if (!chatMessage.trim()) return;
-
-    try {
-      const response = await axios.post(`${API_BASE}/chatbot`, {
-        message: chatMessage
-      });
-
-      if (response.data.success) {
-        setChatResponse(response.data.response);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to get chatbot response');
-    }
-  };
-
-  const getHotels = async () => {
-    try {
-      const response = await axios.get(`${API_BASE}/hotels`);
-      setHotels(response.data.hotels);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to get hotels');
+      Alert.alert('Error', 'Publish failed');
+    } finally {
+      setLoading(false);
+      setCurrentAction('');
     }
   };
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>🏨 Hotel Scraper Dashboard</Text>
-        <Text style={styles.subtitle}>Automated Hotel Data & Social Media</Text>
+        <Text style={styles.title}>Hotel Scraper</Text>
+        <Text style={styles.subtitle}>Traveloka • AI • Social Media</Text>
       </View>
 
-      {/* Scraping Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Scrape Hotels</Text>
         <TextInput
           style={styles.input}
           placeholder="Destination (e.g., Jakarta, Bali)"
           value={destination}
           onChangeText={setDestination}
         />
-        <TouchableOpacity style={styles.button} onPress={handleScrape} disabled={loading}>
-          <Text style={styles.buttonText}>
-            {loading ? 'Scraping...' : '🔍 Scrape Hotels'}
-          </Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryButton} onPress={getHotels}>
-          <Text style={styles.secondaryButtonText}>📋 Get Current Hotels</Text>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleScrapeHotels}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading && currentAction === 'scraping' ? 'Scraping...' : 'Scrape Hotels'}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Hotels List */}
       {hotels.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hotels Found ({hotels.length})</Text>
-          {hotels.slice(0, 5).map((hotel, index) => (
+          <Text style={styles.sectionTitle}>Hotels ({hotels.length})</Text>
+          {hotels.slice(0, 3).map((hotel, index) => (
             <View key={index} style={styles.hotelCard}>
               <Text style={styles.hotelName}>{hotel.name}</Text>
-              {hotel.price && <Text style={styles.hotelPrice}>💰 {hotel.price}</Text>}
-              {hotel.rating && <Text style={styles.hotelRating}>⭐ {hotel.rating}</Text>}
+              {hotel.price && <Text style={styles.hotelPrice}>{hotel.price}</Text>}
             </View>
           ))}
         </View>
       )}
 
-      {/* Content Generation */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Content Generation</Text>
-        <TouchableOpacity style={styles.button} onPress={handleGenerate}>
-          <Text style={styles.buttonText}>✨ Generate Social Media Post</Text>
+        <TouchableOpacity
+          style={[styles.button, (loading || hotels.length === 0) && styles.buttonDisabled]}
+          onPress={handleGenerateCaption}
+          disabled={loading || hotels.length === 0}
+        >
+          <Text style={styles.buttonText}>
+            {loading && currentAction === 'generating' ? 'Generating...' : 'Generate Caption'}
+          </Text>
         </TouchableOpacity>
 
-        {content ? (
-          <View style={styles.contentBox}>
-            <Text style={styles.contentText}>{content}</Text>
+        {caption ? (
+          <View style={styles.captionBox}>
+            <Text style={styles.captionText}>{caption}</Text>
           </View>
         ) : null}
 
-        <TouchableOpacity style={styles.publishButton} onPress={handlePublish}>
-          <Text style={styles.publishButtonText}>🚀 Publish to Social Media</Text>
+        <TouchableOpacity
+          style={[styles.publishButton, (loading || hotels.length === 0) && styles.buttonDisabled]}
+          onPress={handlePublish}
+          disabled={loading || hotels.length === 0}
+        >
+          <Text style={styles.publishButtonText}>
+            {loading && currentAction === 'publishing' ? 'Publishing...' : 'Publish Content'}
+          </Text>
         </TouchableOpacity>
-      </View>
-
-      {/* Chatbot */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Travel Assistant Chat</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Ask about hotels or travel..."
-          value={chatMessage}
-          onChangeText={setChatMessage}
-        />
-        <TouchableOpacity style={styles.button} onPress={handleChat}>
-          <Text style={styles.buttonText}>💬 Ask Assistant</Text>
-        </TouchableOpacity>
-
-        {chatResponse ? (
-          <View style={styles.chatResponse}>
-            <Text style={styles.chatResponseText}>{chatResponse}</Text>
-          </View>
-        ) : null}
       </View>
     </ScrollView>
   );
@@ -172,14 +176,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    padding: 16,
   },
   header: {
-    backgroundColor: 'white',
-    padding: 20,
     alignItems: 'center',
+    marginBottom: 24,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#333',
   },
@@ -190,71 +194,49 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: 'white',
-    margin: 10,
-    padding: 15,
-    borderRadius: 10,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
+    shadowRadius: 4,
+    elevation: 3,
   },
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 10,
+    marginBottom: 12,
     fontSize: 16,
   },
   button: {
     backgroundColor: '#4F46E5',
-    padding: 15,
+    padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
+  },
+  buttonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   buttonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
-  secondaryButton: {
-    backgroundColor: '#6B7280',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  publishButton: {
-    backgroundColor: '#10B981',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  publishButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#333',
   },
   hotelCard: {
     backgroundColor: '#f8f9fa',
     padding: 12,
     borderRadius: 8,
     marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#4F46E5',
   },
   hotelName: {
     fontSize: 16,
@@ -265,34 +247,29 @@ const styles = StyleSheet.create({
     color: '#059669',
     fontSize: 14,
   },
-  hotelRating: {
-    color: '#D97706',
-    fontSize: 14,
-  },
-  contentBox: {
+  captionBox: {
     backgroundColor: '#f0f9ff',
     padding: 12,
     borderRadius: 8,
-    marginTop: 10,
-    borderLeftWidth: 3,
+    marginTop: 12,
+    borderLeftWidth: 4,
     borderLeftColor: '#0EA5E9',
   },
-  contentText: {
+  captionText: {
     fontSize: 14,
     lineHeight: 20,
     color: '#333',
   },
-  chatResponse: {
-    backgroundColor: '#f0fdf4',
-    padding: 12,
+  publishButton: {
+    backgroundColor: '#10B981',
+    padding: 16,
     borderRadius: 8,
-    marginTop: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: '#10B981',
+    alignItems: 'center',
+    marginTop: 12,
   },
-  chatResponseText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#333',
+  publishButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
